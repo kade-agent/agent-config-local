@@ -1,15 +1,16 @@
-# agent-config: the local-config line
+# agent-config-local
 
 The global rules, skills and tools for agents (Claude Code, Pi) on a Windows PC whose
 repositories are local only: no push, no remote to manage, no CI, a local model. Public, and
 kept generic: nothing here names a company, a path or a host.
 
-`main` is the GitHub setup (releases, issues, the Project, Actions). This branch never merges
-into it; a fix to a shared part (`hooks/context-guard.cjs`, the skills) is ported by hand.
+It began on 2026-10-16 as a branch of `kade-agent/agent-config`, the GitHub setup (releases,
+issues, the Project, Actions), and moved here with its history. The two never merge; a fix to a
+shared part (`hooks/context-guard.cjs`, the skills) is ported by hand.
 
 ## What replaces what
 
-| GitHub setup (`main`) | Here |
+| GitHub setup (`agent-config`) | Here |
 |---|---|
 | Issues, Project fields, `cmd:` labels | Task files in `AgentNotes\<project>\tasks\`, changed with `agent-board set` |
 | `STATUS.md` on the `status` branch | `AgentNotes\<project>\STATUS.md`, rewritten on every change |
@@ -28,8 +29,8 @@ folder name.
 Needs Git for Windows 2.31 or later and Node 20 or later. In PowerShell or cmd:
 
 ```bat
-git clone -b local-config https://github.com/kade-agent/agent-config %USERPROFILE%\local-config
-node %USERPROFILE%\local-config\setup\install.cjs
+git clone https://github.com/kade-agent/agent-config-local %USERPROFILE%\agent-config-local
+node %USERPROFILE%\agent-config-local\setup\install.cjs
 ```
 
 It writes into `%USERPROFILE%\.claude` (and `%USERPROFILE%\.pi\agent` if Pi is installed) only
@@ -37,13 +38,13 @@ files it installed itself; any other file in the way stops it before it writes a
 own Claude Code rules can go in `%USERPROFILE%\.claude\rules\`. For a model with a 200K window:
 `setx CLAUDE_CONTEXT_WINDOW 200000` (the default is 1M).
 
-To update: `git -C %USERPROFILE%\local-config pull`, then run `install.cjs` again.
+To update: `git -C %USERPROFILE%\agent-config-local pull`, then run `install.cjs` again.
 `install.cjs --dry-run` shows what it would change.
 
 ## Setup, once per repository
 
 ```bat
-node %USERPROFILE%\local-config\setup\install.cjs --repo C:\work\shop
+node %USERPROFILE%\agent-config-local\setup\install.cjs --repo C:\work\shop
 cd C:\work\shop
 node %USERPROFILE%\.claude\tools\agent-board.cjs config gate="gradlew.bat test"
 ```
@@ -80,7 +81,7 @@ it as `node ~/.claude/tools/agent-board.cjs` from Git Bash):
 | `tools/agent-board.cjs` | The Project and Board in AgentNotes |
 | `setup/install.cjs` | The installer |
 | `tests/`, `*.test.cjs` | `node --test` |
-| `.claude/CLAUDE.md` | This branch's notes for a session working on it; never installed |
+| `.claude/CLAUDE.md` | This repository's notes for a session working on it; never installed |
 
 ## Tests
 

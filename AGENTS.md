@@ -1,4 +1,4 @@
-Local rules: local-2026.10.16
+Local rules: local-2026.10.16.2
 
 # Global rules: local setup
 
@@ -71,5 +71,5 @@ every repository, kept by `agent-board` (`node ~/.claude/tools/agent-board.cjs`)
 ## The agents' own files
 
 - This file at most 100 lines; skills in `~/.claude/skills/<name>/SKILL.md` (Pi:
-  `~/.pi/agent/skills/`), each with `name` and `description`. They are installed from the
-  local-config clone by `setup/install.cjs`; change them there, never in place.
+  `~/.pi/agent/skills/`), each with `name` and `description`. They are installed from a
+  clone of agent-config-local by `setup/install.cjs`; change them there, never in place.

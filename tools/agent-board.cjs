@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// agent-board: the Project and Board for repositories with no remote to manage (the local-config
-// line of github.com/kade-agent/agent-config). It replaces issues, Project fields and STATUS.md:
+// agent-board: the Project and Board for repositories with no remote to manage
+// (github.com/kade-agent/agent-config-local). It replaces issues, Project fields and STATUS.md:
 //
 //   AgentNotes\<project>\           AGENT_NOTES_DIR, default %USERPROFILE%\AgentNotes
 //     project.json                  repo (its main checkout), mainBranch, merge, gate, subjectPattern, phases
