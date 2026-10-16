@@ -81,16 +81,29 @@ function gitTry(ctx, cwd, args) {
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
+// One spelling per folder: links and Windows short names (RUNNER~1) resolved, as git reports them.
+// A path that does not exist yet keeps its missing tail on its nearest existing parent.
+function real(p) {
+  const abs = path.resolve(p);
+  try {
+    return fs.realpathSync.native(abs);
+  } catch {
+    const parent = path.dirname(abs);
+    return parent === abs ? abs : path.join(real(parent), path.basename(abs));
+  }
+}
+
 function samePath(a, b) {
   const norm = (p) => {
-    const r = path.resolve(p);
+    const r = real(p);
     return process.platform === "win32" ? r.toLowerCase() : r;
   };
   return norm(a) === norm(b);
 }
 
 function inside(child, parent) {
-  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  const lower = (p) => (process.platform === "win32" ? real(p).toLowerCase() : real(p));
+  const rel = path.relative(lower(parent), lower(child));
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
@@ -107,7 +120,7 @@ function repoInfo(ctx) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
     fail(`"${name}" cannot be a project name: write one (letters, digits, . _ -) in ${path.join(common, "agent-project")}`);
   }
-  return { top: path.resolve(top), common, main, name };
+  return { top: real(top), common: real(common), main: real(main), name };
 }
 
 function clean(ctx, cwd) {
