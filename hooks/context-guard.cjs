@@ -29,7 +29,7 @@
 //   CONTEXT_HANDOFF_TOKENS   default 400000     CONTEXT_HANDOFF_PCT   default 60 (cap)
 //
 // The hook never blocks a prompt: on any error it prints nothing and exits 0.
-// Source of truth: the local-config branch of github.com/kade-agent/agent-config (hooks/); installed into ~/.claude/hooks by setup/install.cjs.
+// Source of truth: github.com/kade-agent/agent-config-local (hooks/); installed into ~/.claude/hooks by setup/install.cjs.
 
 "use strict";
 

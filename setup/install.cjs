@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// install: puts the local-config rules, skills, hook and tool in place on a developer's PC, and
-// sets up one repository at a time. Run it from a clone of the local-config branch:
+// install: puts the rules, skills, hook and tool of agent-config-local in place on a developer's
+// PC, and sets up one repository at a time. Run it from a clone of agent-config-local:
 //
 //   node setup\install.cjs                    install or update ~/.claude, and ~/.pi/agent if Pi is installed
 //   node setup\install.cjs --dry-run          say what it would change; write nothing

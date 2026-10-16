@@ -88,3 +88,14 @@ test("every skill the rules name exists, and every skill has Pi's frontmatter", 
     assert.ok(text.trimEnd().split("\n").length <= 100, `${s}: at most 100 lines`);
   }
 });
+
+test("nothing points at the branch of agent-config this repository moved from", () => {
+  const { execFileSync } = require("child_process");
+  const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => f && f !== "tests/rules.test.cjs");
+  for (const file of files) {
+    const text = read(file);
+    const line = text.split("\n").findIndex((l) => /local-config (branch|line|clone)|-b local-config|branch local-config|github\.com\/kade-agent\/agent-config(?!-local)/.test(l));
+    assert.strictEqual(line, -1, `${file}:${line + 1}: ${text.split("\n")[line]}`);
+  }
+  assert.match(read("README.md"), /git clone https:\/\/github\.com\/kade-agent\/agent-config-local /);
+});

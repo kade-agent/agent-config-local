@@ -14,7 +14,7 @@ the repository.
 ## 0. Once per repository
 
 If `agent-board board` says there is no project, ask the developer to run
-`node setup\install.cjs --repo <path>` from the local-config clone (LF attributes and the
+`node setup\install.cjs --repo <path>` from the agent-config-local clone (LF attributes and the
 project), then set the gate: `agent-board config gate="gradlew.bat test"` (the command they name).
 Other settings: `mainBranch`, `merge` (`no-ff` or `squash`), `subjectPattern` (a regular
 expression the subject must match, such as a ticket key), `phases`.
