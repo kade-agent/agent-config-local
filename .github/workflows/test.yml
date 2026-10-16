@@ -1,0 +1,35 @@
+name: test
+
+# node --test on Linux and on Windows, the developer PCs' system; the line endings on Linux.
+# Runs on every PR and every push to main, so it always reports and can be a required check.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  test:
+    name: node --test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test
+      - name: Every tracked file is stored with LF
+        if: runner.os == 'Linux'
+        run: |
+          bad=$(git ls-files --eol | grep -v '^i/lf ' | grep -v '^i/none ' || true)
+          if [ -n "$bad" ]; then echo "::error::not stored with LF:"; echo "$bad"; exit 1; fi
