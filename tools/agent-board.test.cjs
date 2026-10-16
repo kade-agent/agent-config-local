@@ -15,7 +15,8 @@ const TOOL = path.join(__dirname, "agent-board.cjs");
 const AUTHOR = "Claude <noreply@anthropic.com>";
 
 function sandbox() {
-  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "agent-board-")));
+  // .native: Windows' temp folder can be a short name (RUNNER~1); git reports the long one.
+  const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "agent-board-")));
   const gitconfig = path.join(base, "gitconfig");
   fs.writeFileSync(gitconfig, "");
   const env = {
@@ -151,6 +152,21 @@ test("AgentNotes inside the repository, or with a remote, is refused", () => {
   const r = s.run(repo, "new", "x");
   assert.strictEqual(r.code, 1);
   assert.match(r.err, /remote/);
+});
+
+test("AgentNotes inside the repository under another name (a link, a short name) is refused", () => {
+  const s = sandbox();
+  const repo = s.repo("app");
+  fs.mkdirSync(path.join(repo, "notes"));
+  const alias = path.join(s.base, "elsewhere");
+  fs.symlinkSync(path.join(repo, "notes"), alias, "junction");
+  const env = { ...s.env, AGENT_NOTES_DIR: alias };
+  let err = "";
+  assert.strictEqual(board.main(["init"], { cwd: repo, env, out: () => {}, err: (x) => (err += x) }), 1);
+  assert.match(err, /outside the repository/);
+  const later = { ...s.env, AGENT_NOTES_DIR: path.join(alias, "not-yet", "AgentNotes") };
+  assert.strictEqual(board.main(["init"], { cwd: repo, env: later, out: () => {}, err: () => {} }), 1);
+  assert.ok(!fs.existsSync(path.join(repo, "notes", "not-yet")), "refused before anything is created");
 });
 
 test("new numbers tasks, fills the defaults and commits AgentNotes", () => {
