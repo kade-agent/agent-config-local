@@ -350,7 +350,8 @@ test("--repo moves a project whose repository was renamed, after a y, and backs 
   const s = sandbox();
   const repo = companyRepo(s);
   assert.strictEqual(s.run("--repo", repo, "--project", "shop").code, 0);
-  const before = fs.realpathSync(repo);
+  // .native: Windows' temp folder can be a short name (RUNNER~1); agent-board records the long one.
+  const before = fs.realpathSync.native(repo);
   const moved = path.join(s.base, "shop-renamed");
   fs.renameSync(repo, moved);
   assert.strictEqual(s.run("--repo", moved, "--project", "shop").code, 1, "no terminal: refused");
@@ -358,7 +359,7 @@ test("--repo moves a project whose repository was renamed, after a y, and backs 
   const r = s.run("--repo", moved, "--project", "shop");
   assert.strictEqual(r.code, 0, r.err);
   const notes = path.join(s.home, "AgentNotes");
-  assert.strictEqual(JSON.parse(read(path.join(notes, "shop", "project.json"))).repo, fs.realpathSync(moved));
+  assert.strictEqual(JSON.parse(read(path.join(notes, "shop", "project.json"))).repo, fs.realpathSync.native(moved));
   const [stamp] = fs.readdirSync(path.join(notes, ".backup"));
   assert.strictEqual(JSON.parse(read(path.join(notes, ".backup", stamp, "shop", "project.json"))).repo, before);
 });
