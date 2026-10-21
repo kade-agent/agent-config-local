@@ -155,3 +155,19 @@ test("the Pi agents name no model, no CLI and no web tool, and cover every bundl
     assert.match(fm[1], /^spawning: false$/m, `${name}: never spawns`);
   }
 });
+
+// The skills in Pi (2026-10-21): Pi starts a skill with /skill:<name>, asks the developer
+// through ask_user_question (one question per call, from the extension in the README), has no
+// context-guard hook, and auto-compacts on its own; a local model's window is often far below
+// 200K, so the handoff lines are fractions of the window.
+test("the skills fit Pi: its skill command, its question tool, its windows and compaction", () => {
+  const skill = (s) => read("skills", s, "SKILL.md");
+  assert.match(skill("dispatcher"), /\/skill:dispatcher/);
+  assert.doesNotMatch(skill("dispatcher"), /at most 4 questions/);
+  for (const s of ["dispatcher", "repo-workflow"]) {
+    assert.match(skill(s), /ask_user_question/, `${s}: Pi's question tool`);
+  }
+  const handoff = skill("handoff-trigger");
+  for (const needed of ["of the window", "16K", "/compact"]) assert.ok(handoff.includes(needed), `handoff-trigger: ${needed}`);
+  assert.doesNotMatch(handoff, /its compact command/);
+});
