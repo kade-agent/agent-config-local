@@ -259,6 +259,20 @@ function setupRepo(ctx, repoArg, mainBranch) {
   return board.main(["init", ...(mainBranch ? ["--main", mainBranch] : [])], { cwd: repo, env: ctx.env, out: ctx.out, err: ctx.err });
 }
 
+// The clone is wherever this file is, whatever its folder is called. The installer it pulled may
+// differ from the one running, so that one runs the install.
+function upgrade(ctx, argv) {
+  const pull = git(ctx, ROOT, ["pull", "--ff-only"]);
+  if (pull.status !== 0) {
+    ctx.err(`install: git pull --ff-only in ${ROOT} failed; nothing was installed:\n${pull.stderr || pull.stdout}`);
+    return 1;
+  }
+  ctx.out(`${ROOT}: ${(pull.stdout || "").trim().split("\n").pop()}\n`);
+  const file = path.join(ROOT, "setup", "install.cjs");
+  delete require.cache[require.resolve(file)];
+  return require(file).main(argv, ctx);
+}
+
 function main(argv, ctx) {
   const i = argv.indexOf("--repo");
   if (i >= 0) {
@@ -269,12 +283,17 @@ function main(argv, ctx) {
     const m = argv.indexOf("--main");
     return setupRepo(ctx, argv[i + 1], m >= 0 ? argv[m + 1] : "");
   }
-  const unknown = argv.filter((a) => a !== "--dry-run");
+  const unknown = argv.filter((a) => a !== "--dry-run" && a !== "--upgrade");
   if (unknown.length) {
     ctx.err(`install: unknown argument ${unknown[0]}; see the top of setup/install.cjs\n`);
     return 1;
   }
-  return installAll(ctx, argv.includes("--dry-run"));
+  const dry = argv.includes("--dry-run");
+  if (argv.includes("--upgrade")) {
+    if (dry) ctx.out(`would run git pull --ff-only in ${ROOT}, then install what it pulled\n`);
+    else return upgrade(ctx, argv.filter((a) => a !== "--upgrade"));
+  }
+  return installAll(ctx, dry);
 }
 
 module.exports = { main, mergeSettings };
