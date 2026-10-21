@@ -501,3 +501,26 @@ test("outside a repository it says so", () => {
   assert.strictEqual(r.code, 1);
   assert.match(r.err, /not inside a git repository/);
 });
+
+// install.cjs --repo moves a project to its repository's new folder (2026-10-21): init --move
+// re-points a project whose recorded repository no longer exists, after a copy to .backup/.
+test("init --move re-points a project whose repository is gone, and refuses one that still exists", () => {
+  const s = sandbox();
+  const old = s.repo("shop");
+  s.ok(old, "init");
+  const moved = path.join(s.base, "shop-renamed");
+  fs.renameSync(old, moved);
+  fs.writeFileSync(path.join(moved, ".git", "agent-project"), "shop\n");
+  assert.match(s.run(moved, "init").err, /belongs to/);
+  s.ok(moved, "init", "--move");
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(s.notes("shop"), "project.json"), "utf8")).repo, moved);
+  const backup = path.join(s.env.AGENT_NOTES_DIR, ".backup");
+  const [stamp] = fs.readdirSync(backup);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(backup, stamp, "shop", "project.json"), "utf8")).repo, old);
+  assert.strictEqual(s.git(s.env.AGENT_NOTES_DIR, "status", "--porcelain"), "", "the move is committed; .backup is not tracked");
+  const other = s.repo("other");
+  fs.writeFileSync(path.join(other, ".git", "agent-project"), "shop\n");
+  const r = s.run(other, "init", "--move");
+  assert.strictEqual(r.code, 1);
+  assert.match(r.err, /belongs to/);
+});
