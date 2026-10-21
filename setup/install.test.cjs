@@ -31,15 +31,17 @@ function sandbox() {
     GIT_COMMITTER_NAME: "Dev",
     GIT_COMMITTER_EMAIL: "dev@example.invalid",
   };
+  // ctx.ask answers the installer's questions (unset: no terminal); ctx.cwd is the current directory.
+  const ctx = {};
   const run = (...args) => {
     let out = "";
     let err = "";
-    const code = install.main(args, { env, out: (s) => (out += s), err: (s) => (err += s) });
+    const code = install.main(args, { env, out: (s) => (out += s), err: (s) => (err += s), ...ctx });
     return { code, out, err };
   };
   const git = (cwd, ...args) => execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   const claude = (...p) => path.join(home, ".claude", ...p);
-  return { base, home, env, run, git, claude };
+  return { base, home, env, ctx, run, git, claude };
 }
 
 const read = (f) => fs.readFileSync(f, "utf8");
@@ -188,7 +190,7 @@ test("--repo writes .git/info/attributes once, keeps other lines, and sets up th
   const attributes = path.join(repo, ".git", "info", "attributes");
   fs.mkdirSync(path.dirname(attributes), { recursive: true });
   fs.writeFileSync(attributes, "*.png binary\n");
-  const r = s.run("--repo", repo);
+  const r = s.run("--repo", repo, "--project", "shop");
   assert.strictEqual(r.code, 0, r.err);
   const text = read(attributes);
   assert.match(text, /^\*\.png binary$/m);
@@ -196,7 +198,7 @@ test("--repo writes .git/info/attributes once, keeps other lines, and sets up th
   assert.match(text, /^\*\.bat -text$/m);
   assert.match(r.out, /1 file is stored with CRLF/);
   assert.ok(fs.existsSync(path.join(s.home, "AgentNotes", "shop", "project.json")));
-  assert.strictEqual(s.run("--repo", repo).code, 0);
+  assert.strictEqual(s.run("--repo", repo, "--project", "shop").code, 0);
   assert.strictEqual(read(attributes), text, "a second run changes nothing");
   assert.strictEqual(s.git(repo, "status", "--porcelain"), "", "nothing in the repository's tracked files");
 });
@@ -204,7 +206,7 @@ test("--repo writes .git/info/attributes once, keeps other lines, and sets up th
 test("with the attributes, text is committed with LF and .bat files exactly as they are", () => {
   const s = sandbox();
   const repo = companyRepo(s);
-  assert.strictEqual(s.run("--repo", repo).code, 0);
+  assert.strictEqual(s.run("--repo", repo, "--project", "shop").code, 0);
   fs.writeFileSync(path.join(repo, "App.java"), "class App {\r\n}\r\n");
   fs.writeFileSync(path.join(repo, "run.bat"), "@echo off\r\nexit 0\r\n");
   fs.writeFileSync(path.join(repo, "logo.bin"), Buffer.from([0, 13, 10, 255]));
@@ -215,9 +217,163 @@ test("with the attributes, text is committed with LF and .bat files exactly as t
   assert.match(eol, /^i\/-text\s.*logo\.bin$/m);
 });
 
-test("--repo outside a git repository is refused", () => {
+test("--repo outside a git repository, with no terminal or no y, is refused and creates nothing", () => {
   const s = sandbox();
-  const r = s.run("--repo", s.base);
+  const r = s.run("--repo", s.base, "--project", "loose");
   assert.strictEqual(r.code, 1);
   assert.match(r.err, /not a git repository/);
+  s.ctx.ask = () => "n";
+  assert.strictEqual(s.run("--repo", s.base, "--project", "loose").code, 1);
+  assert.ok(!fs.existsSync(path.join(s.base, ".git")));
+});
+
+// Migration (2026-10-21): files in the way are moved to a backup folder after the developer's y.
+const backups = (s) => {
+  const dir = path.join(s.home, ".agent-config-backup");
+  return fs.existsSync(dir) ? fs.readdirSync(dir).map((d) => path.join(dir, d)) : [];
+};
+
+test("a file in the way, answered y, moves to the backup folder and the install goes through", () => {
+  const s = sandbox();
+  fs.mkdirSync(s.claude());
+  fs.writeFileSync(s.claude("CLAUDE.md"), "my own rules\n");
+  let asked = "";
+  s.ctx.ask = (q) => ((asked = q), "y");
+  const r = s.run();
+  assert.strictEqual(r.code, 0, r.err);
+  assert.match(asked, /CLAUDE\.md/);
+  assert.match(asked, /\.agent-config-backup/);
+  const [backup] = backups(s);
+  assert.strictEqual(read(path.join(backup, ".claude", "CLAUDE.md")), "my own rules\n");
+  assert.strictEqual(read(s.claude("CLAUDE.md")), src("CLAUDE.md"));
+});
+
+test("an edited installed file, answered y, is kept in the backup and replaced", () => {
+  const s = sandbox();
+  s.run();
+  const skill = s.claude("skills", SKILLS[0], "SKILL.md");
+  fs.appendFileSync(skill, "my note\n");
+  s.ctx.ask = () => "Y";
+  assert.strictEqual(s.run().code, 0);
+  const [backup] = backups(s);
+  assert.match(read(path.join(backup, ".claude", "skills", SKILLS[0], "SKILL.md")), /my note/);
+  assert.strictEqual(read(skill), src("skills", SKILLS[0], "SKILL.md"));
+});
+
+test("any answer but y, or --dry-run, moves nothing and makes no backup", () => {
+  const s = sandbox();
+  fs.mkdirSync(s.claude());
+  fs.writeFileSync(s.claude("CLAUDE.md"), "my own rules\n");
+  s.ctx.ask = () => "n";
+  assert.strictEqual(s.run().code, 1);
+  s.ctx.ask = () => assert.fail("--dry-run asks nothing");
+  assert.strictEqual(s.run("--dry-run").code, 1);
+  assert.deepStrictEqual(Object.keys(tree(s.claude())), ["CLAUDE.md"]);
+  assert.deepStrictEqual(backups(s), []);
+});
+
+// --upgrade pulls the clone the installer runs from (whatever its folder is called), then runs
+// the installer it pulled.
+function cloneOfThis(s) {
+  const origin = path.join(s.base, "origin");
+  fs.mkdirSync(origin);
+  const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
+  for (const f of files) {
+    fs.mkdirSync(path.dirname(path.join(origin, f)), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, f), path.join(origin, f));
+  }
+  s.git(origin, "init", "-q", "-b", "main");
+  s.git(origin, "add", "-A");
+  s.git(origin, "commit", "-q", "-m", "start");
+  const clone = path.join(s.base, "renamed-clone");
+  s.git(s.base, "clone", "-q", origin, clone);
+  return { origin, clone, install: require(path.join(clone, "setup", "install.cjs")) };
+}
+
+test("--upgrade pulls the clone, wherever it is, and installs what it pulled", () => {
+  const s = sandbox();
+  const { origin, clone, install: cloned } = cloneOfThis(s);
+  const rules = read(path.join(origin, "AGENTS.md")).replace(/^.*\n/, "Local rules: local-2099.01.01.1\n");
+  fs.writeFileSync(path.join(origin, "AGENTS.md"), rules);
+  s.git(origin, "commit", "-q", "-am", "next");
+  let out = "";
+  let err = "";
+  const code = cloned.main(["--upgrade"], { env: s.env, out: (x) => (out += x), err: (x) => (err += x) });
+  assert.strictEqual(code, 0, err);
+  assert.strictEqual(s.git(clone, "rev-parse", "HEAD"), s.git(origin, "rev-parse", "HEAD"));
+  assert.strictEqual(read(s.claude("AGENTS.md")), rules);
+});
+
+test("--upgrade stops when the clone cannot fast-forward, and installs nothing", () => {
+  const s = sandbox();
+  const { origin, clone, install: cloned } = cloneOfThis(s);
+  fs.appendFileSync(path.join(origin, "README.md"), "upstream\n");
+  s.git(origin, "commit", "-q", "-am", "upstream");
+  fs.appendFileSync(path.join(clone, "README.md"), "local\n");
+  s.git(clone, "commit", "-q", "-am", "local");
+  let err = "";
+  const code = cloned.main(["--upgrade"], { env: s.env, out: () => {}, err: (x) => (err += x) });
+  assert.strictEqual(code, 1);
+  assert.match(err, /git pull --ff-only/);
+  assert.ok(!fs.existsSync(s.claude("AGENTS.md")));
+});
+
+// --repo takes the project's name; the folder's name is never used.
+test("--repo needs --project, defaults to the current directory, and writes the name to .git/agent-project", () => {
+  const s = sandbox();
+  const repo = companyRepo(s);
+  assert.match(s.run("--repo", repo).err, /--project/);
+  s.ctx.cwd = repo;
+  const r = s.run("--repo", "--project", "store");
+  assert.strictEqual(r.code, 0, r.err);
+  assert.strictEqual(read(path.join(repo, ".git", "agent-project")).trim(), "store");
+  assert.ok(fs.existsSync(path.join(s.home, "AgentNotes", "store", "project.json")));
+  assert.ok(!fs.existsSync(path.join(s.home, "AgentNotes", "shop")));
+});
+
+test("--repo on a folder that is not a repository, answered y, runs git init with one empty commit", () => {
+  const s = sandbox();
+  const dir = path.join(s.base, "loose");
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, "notes.txt"), "company file\n");
+  s.ctx.ask = () => "y";
+  const r = s.run("--repo", dir, "--project", "loose");
+  assert.strictEqual(r.code, 0, r.err);
+  assert.strictEqual(s.git(dir, "rev-list", "--count", "HEAD"), "1");
+  assert.strictEqual(s.git(dir, "rev-parse", "--abbrev-ref", "HEAD"), "main");
+  assert.strictEqual(s.git(dir, "show", "--name-only", "--format=", "HEAD"), "", "the first commit is empty");
+  assert.match(s.git(dir, "status", "--porcelain"), /\?\? notes\.txt/, "the developer's files stay untracked");
+  assert.ok(fs.existsSync(path.join(s.home, "AgentNotes", "loose", "project.json")));
+});
+
+test("--repo moves a project whose repository was renamed, after a y, and backs it up", () => {
+  const s = sandbox();
+  const repo = companyRepo(s);
+  assert.strictEqual(s.run("--repo", repo, "--project", "shop").code, 0);
+  // .native: Windows' temp folder can be a short name (RUNNER~1); agent-board records the long one.
+  const before = fs.realpathSync.native(repo);
+  const moved = path.join(s.base, "shop-renamed");
+  fs.renameSync(repo, moved);
+  assert.strictEqual(s.run("--repo", moved, "--project", "shop").code, 1, "no terminal: refused");
+  s.ctx.ask = () => "y";
+  const r = s.run("--repo", moved, "--project", "shop");
+  assert.strictEqual(r.code, 0, r.err);
+  const notes = path.join(s.home, "AgentNotes");
+  assert.strictEqual(JSON.parse(read(path.join(notes, "shop", "project.json"))).repo, fs.realpathSync.native(moved));
+  const [stamp] = fs.readdirSync(path.join(notes, ".backup"));
+  assert.strictEqual(JSON.parse(read(path.join(notes, ".backup", stamp, "shop", "project.json"))).repo, before);
+});
+
+test("--repo refuses a project name whose repository still exists", () => {
+  const s = sandbox();
+  const repo = companyRepo(s);
+  assert.strictEqual(s.run("--repo", repo, "--project", "shop").code, 0);
+  const other = path.join(s.base, "other");
+  fs.mkdirSync(other);
+  s.git(other, "init", "-q", "-b", "main");
+  s.git(other, "commit", "-q", "--allow-empty", "-m", "start");
+  s.ctx.ask = () => "y";
+  const r = s.run("--repo", other, "--project", "shop");
+  assert.strictEqual(r.code, 1);
+  assert.match(r.err, /belongs to/);
 });

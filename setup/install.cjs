@@ -3,16 +3,17 @@
 // PC, and sets up one repository at a time. Run it from a clone of agent-config-local:
 //
 //   node setup\install.cjs                    install or update ~/.claude, and ~/.pi/agent if Pi is installed
-//   node setup\install.cjs --dry-run          say what it would change; write nothing
-//   node setup\install.cjs --repo <path> [--main <branch>]
-//                                             one repository: LF attributes in .git\info\attributes,
-//                                             and its project in AgentNotes (agent-board init)
-//
-// To update: git pull in the clone, then run it again.
+//   node setup\install.cjs --upgrade          git pull --ff-only in this clone, then install what it pulled
+//   node setup\install.cjs --dry-run          say what it would change; write, pull and ask nothing
+//   node setup\install.cjs --repo [<path>] --project <name> [--main <branch>]
+//                                             one repository (default: the current directory): LF
+//                                             attributes in .git\info\attributes, <name> in
+//                                             .git\agent-project, and its project in AgentNotes
 //
 // It writes only files it installed and has not been edited since (a hash list in
-// .local-config.json in each folder), or new ones. Anything else in the way stops it before it
-// writes anything. In ~/.claude/settings.json it replaces only hook entries whose command points
+// .local-config.json in each folder), or new ones. Files in the way are listed and, after a y,
+// moved to %USERPROFILE%\.agent-config-backup\<time>\, where every file it replaces or removes
+// is copied too; without a y nothing is written. In ~/.claude/settings.json it replaces only hook entries whose command points
 // into ~/.claude/hooks/. LOCAL_CONFIG_HOME replaces the home folder (tests).
 "use strict";
 
@@ -28,6 +29,17 @@ const OWNED = "/.claude/hooks/";
 const BLOCK_START = "# >>> local-config (install.cjs --repo): text is committed with LF; batch files as they are";
 const BLOCK_END = "# <<< local-config";
 const ATTRIBUTES = ["* text=auto eol=lf", "*.bat -text", "*.cmd -text"];
+const BACKUPS = ".agent-config-backup";
+const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+// 20261021T141500: a folder name that sorts by time.
+const stamp = (d = new Date()) => d.toISOString().replace(/[-:]/g, "").replace(/\..*$/, "");
+
+// Only "y" is yes. ctx.ask returns the answer, or null with no terminal to ask in.
+function yes(ctx, question) {
+  const answer = ctx.ask ? ctx.ask(question) : null;
+  return answer !== null && answer !== undefined && String(answer).trim().toLowerCase() === "y";
+}
 
 const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");
 
@@ -86,7 +98,8 @@ function mergeSettings(settings, fragment) {
 
 // What one target needs: writes, removals, conflicts and notes. Reads only.
 function plan(target, version) {
-  const p = { target, writes: {}, removes: [], conflicts: [], notes: [], manifest: null, settings: null };
+  // conflicts stop the run; inTheWay can be moved to the backup folder after a y.
+  const p = { target, writes: {}, removes: [], conflicts: [], inTheWay: [], notes: [], manifest: null, settings: null };
   if (target.name === "Claude Code" && fs.existsSync(path.join(target.dir, ".git"))) {
     p.conflicts.push(`${target.dir} is a git checkout (the GitHub setup's releases); this installer is for PCs without it`);
     return p;
@@ -102,8 +115,7 @@ function plan(target, version) {
     files[rel] = hash(text);
     if (cur === text) continue;
     if (cur === null || old.files[rel] === hash(cur)) p.writes[rel] = text;
-    else if (old.files[rel]) p.conflicts.push(`${full} changed since it was installed; move your changes out (or delete it) and run again`);
-    else p.conflicts.push(`${full} is not from this installer; move it away and run again (your own rules can go in ~/.claude/rules/)`);
+    else p.inTheWay.push({ rel, text, why: old.files[rel] ? "changed since it was installed" : "not from this installer" });
   }
   for (const [rel, h] of Object.entries(old.files || {})) {
     if (rel in target.files) continue;
@@ -140,8 +152,17 @@ function removeEmptyParents(dir, stop) {
   }
 }
 
-function apply(p) {
+// Every existing file the run replaces or removes is copied to the backup folder first.
+function apply(p, backup) {
   const dir = p.target.dir;
+  const keep = (rel) => {
+    const from = path.join(dir, rel);
+    if (!backup.dir || !fs.existsSync(from)) return;
+    const to = path.join(backup.dir, path.relative(backup.home, dir), rel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+  };
+  for (const rel of [...Object.keys(p.writes), ...p.removes, ...(p.settings ? ["settings.json"] : [])]) keep(rel);
   for (const [rel, text] of Object.entries(p.writes)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
     fs.writeFileSync(path.join(dir, rel), text);
@@ -181,10 +202,23 @@ function installAll(ctx, dry) {
     ctx.err(`install: nothing was changed:\n${conflicts.map((c) => `  ${c}\n`).join("")}`);
     return 1;
   }
+  const backup = { home, dir: path.join(home, BACKUPS, stamp()) };
+  const inTheWay = plans.flatMap((p) => p.inTheWay.map((f) => ({ p, ...f })));
+  if (inTheWay.length) {
+    const list = inTheWay.map((f) => `  ${path.join(f.p.target.dir, f.rel)}: ${f.why}\n`).join("");
+    if (dry || !yes(ctx, `These files are in the way:\n${list}Move them to ${backup.dir} and install? [y/N] `)) {
+      ctx.err(`install: nothing was changed; these files are in the way:\n${list}` +
+        `  run install in a terminal and answer y to move them to ${path.join(home, BACKUPS)}\n`);
+      return 1;
+    }
+    for (const f of inTheWay) f.p.writes[f.rel] = f.text;
+  }
+  const changes = plans.some((p) => Object.keys(p.writes).length || p.removes.length || p.settings);
   for (const p of plans) {
-    if (!dry) apply(p);
+    if (!dry) apply(p, changes ? backup : {});
     report(p, ctx, dry);
   }
+  if (!dry && fs.existsSync(backup.dir)) ctx.out(`the files it replaced or removed are in ${backup.dir}\n`);
   ctx.out(`${version}\n`);
   return 0;
 }
@@ -193,12 +227,70 @@ function git(ctx, cwd, args) {
   return spawnSync("git", args, { cwd, env: ctx.env, encoding: "utf8" });
 }
 
-function setupRepo(ctx, repoArg, mainBranch) {
+function samePath(a, b) {
+  const norm = (p) => {
+    const full = fs.existsSync(p) ? fs.realpathSync(p) : path.resolve(p);
+    return process.platform === "win32" ? full.toLowerCase() : full;
+  };
+  return norm(a) === norm(b);
+}
+
+// A folder that is not a repository becomes one after a y: git init and one empty commit with
+// the developer's own identity, so the main branch exists; their files stay untracked.
+function initRepo(ctx, repo) {
+  if (!yes(ctx, `${repo} is not a git repository. git init here, with an empty first commit? [y/N] `)) {
+    ctx.err(`install: ${repo} is not a git repository; nothing was changed (run in a terminal and answer y to git init it)\n`);
+    return false;
+  }
+  if (git(ctx, repo, ["var", "GIT_AUTHOR_IDENT"]).status !== 0) {
+    ctx.err("install: git has no user.name and user.email for the first commit; set them and run again\n");
+    return false;
+  }
+  for (const args of [["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "Start the repository"]]) {
+    const r = git(ctx, repo, args);
+    if (r.status !== 0) {
+      ctx.err(`install: git ${args[0]} failed in ${repo}:\n${r.stderr}`);
+      return false;
+    }
+  }
+  ctx.out(`git init ${repo}, with one empty commit on main; your files are untracked\n`);
+  return true;
+}
+
+function setupRepo(ctx, repoArg, mainBranch, project) {
   const repo = path.resolve(repoArg);
-  const top = git(ctx, repo, ["rev-parse", "--show-toplevel"]);
-  if (!fs.existsSync(repo) || top.status !== 0) {
-    ctx.err(`install: ${repo} is not a git repository\n`);
+  if (!fs.existsSync(repo)) {
+    ctx.err(`install: ${repo} does not exist\n`);
     return 1;
+  }
+  if (git(ctx, repo, ["rev-parse", "--show-toplevel"]).status !== 0 && !initRepo(ctx, repo)) return 1;
+  // The project is the name given, never the folder's; a project whose repository was renamed
+  // or moved is re-pointed here after a y (agent-board init --move).
+  const common = path.resolve(repo, git(ctx, repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim());
+  const checkout = path.basename(common) === ".git" ? path.dirname(common) : common;
+  const notes = path.resolve(ctx.env.AGENT_NOTES_DIR || path.join(os.homedir(), "AgentNotes"));
+  const projectFile = path.join(notes, project, "project.json");
+  let move = false;
+  if (fs.existsSync(projectFile)) {
+    const recorded = JSON.parse(fs.readFileSync(projectFile, "utf8")).repo;
+    if (!samePath(recorded, checkout)) {
+      if (fs.existsSync(recorded)) {
+        ctx.err(`install: the project ${project} belongs to ${recorded}; give this repository another --project\n`);
+        return 1;
+      }
+      if (!yes(ctx, `The project ${project} belongs to ${recorded}, which no longer exists. Move it to ${checkout}? [y/N] `)) {
+        ctx.err(`install: nothing was changed: the project ${project} belongs to ${recorded}, which no longer exists; ` +
+          `run in a terminal and answer y to move it here\n`);
+        return 1;
+      }
+      move = true;
+    }
+  }
+  const nameFile = path.join(common, "agent-project");
+  const oldName = fs.existsSync(nameFile) ? fs.readFileSync(nameFile, "utf8").trim() : "";
+  if (oldName !== project) {
+    fs.writeFileSync(nameFile, `${project}\n`);
+    ctx.out(`wrote the project name ${project} to ${nameFile}${oldName ? ` (it was ${oldName})` : ""}\n`);
   }
   const attrPath = path.resolve(repo, git(ctx, repo, ["rev-parse", "--git-path", "info/attributes"]).stdout.trim());
   const old = fs.existsSync(attrPath) ? fs.readFileSync(attrPath, "utf8").replace(/\r\n/g, "\n") : "";
@@ -222,31 +314,81 @@ function setupRepo(ctx, repoArg, mainBranch) {
     );
   }
   const board = require(path.join(ROOT, "tools", "agent-board.cjs"));
-  return board.main(["init", ...(mainBranch ? ["--main", mainBranch] : [])], { cwd: repo, env: ctx.env, out: ctx.out, err: ctx.err });
+  const args = ["init", ...(mainBranch ? ["--main", mainBranch] : []), ...(move ? ["--move"] : [])];
+  return board.main(args, { cwd: repo, env: ctx.env, out: ctx.out, err: ctx.err });
+}
+
+// The clone is wherever this file is, whatever its folder is called. The installer it pulled may
+// differ from the one running, so that one runs the install.
+function upgrade(ctx, argv) {
+  const pull = git(ctx, ROOT, ["pull", "--ff-only"]);
+  if (pull.status !== 0) {
+    ctx.err(`install: git pull --ff-only in ${ROOT} failed; nothing was installed:\n${pull.stderr || pull.stdout}`);
+    return 1;
+  }
+  ctx.out(`${ROOT}: ${(pull.stdout || "").trim().split("\n").pop()}\n`);
+  const file = path.join(ROOT, "setup", "install.cjs");
+  delete require.cache[require.resolve(file)];
+  return require(file).main(argv, ctx);
 }
 
 function main(argv, ctx) {
   const i = argv.indexOf("--repo");
   if (i >= 0) {
-    if (!argv[i + 1]) {
-      ctx.err("install: --repo needs a path\n");
+    const next = argv[i + 1];
+    const repo = next && !next.startsWith("--") ? next : ctx.cwd || process.cwd();
+    const p = argv.indexOf("--project");
+    const project = p >= 0 ? argv[p + 1] || "" : "";
+    if (!PROJECT_NAME.test(project)) {
+      ctx.err("install: --repo needs --project <name> (letters, digits, . _ -); the folder's name is never used\n");
       return 1;
     }
     const m = argv.indexOf("--main");
-    return setupRepo(ctx, argv[i + 1], m >= 0 ? argv[m + 1] : "");
+    return setupRepo(ctx, repo, m >= 0 ? argv[m + 1] : "", project);
   }
-  const unknown = argv.filter((a) => a !== "--dry-run");
+  const unknown = argv.filter((a) => a !== "--dry-run" && a !== "--upgrade");
   if (unknown.length) {
     ctx.err(`install: unknown argument ${unknown[0]}; see the top of setup/install.cjs\n`);
     return 1;
   }
-  return installAll(ctx, argv.includes("--dry-run"));
+  const dry = argv.includes("--dry-run");
+  if (argv.includes("--upgrade")) {
+    if (dry) ctx.out(`would run git pull --ff-only in ${ROOT}, then install what it pulled\n`);
+    else return upgrade(ctx, argv.filter((a) => a !== "--upgrade"));
+  }
+  return installAll(ctx, dry);
 }
 
 module.exports = { main, mergeSettings };
 
+// One line from the terminal, or null when there is none (a script, CI).
+function askTerminal(question) {
+  if (!process.stdin.isTTY) return null;
+  process.stdout.write(question);
+  const buf = Buffer.alloc(256);
+  let line = "";
+  for (;;) {
+    let n = 0;
+    try {
+      n = fs.readSync(0, buf, 0, buf.length, null);
+    } catch (e) {
+      if (e.code === "EAGAIN") {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+        continue;
+      }
+      if (e.code === "EOF") break;
+      throw e;
+    }
+    if (!n) break;
+    line += buf.toString("utf8", 0, n);
+    if (line.includes("\n")) break;
+  }
+  return line.split(/\r?\n/)[0];
+}
+
 if (require.main === module) {
   process.exitCode = main(process.argv.slice(2), {
+    ask: askTerminal,
     env: process.env,
     out: (s) => process.stdout.write(s),
     err: (s) => process.stderr.write(s),

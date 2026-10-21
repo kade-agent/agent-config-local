@@ -14,7 +14,8 @@
 // name in .git\agent-project. Nothing is ever written into the repository itself.
 //
 // Commands (run inside the repository):
-//   init [--main <branch>]                 set up AgentNotes and the project
+//   init [--main <branch>] [--move]        set up AgentNotes and the project; --move re-points a project
+//                                          whose repository is gone to this one (copy in AgentNotes\.backup)
 //   config [key=value ...]                 show or set project.json
 //   new "<title>" [--priority P1] [--phase <name>] [--status <status>]
 //   set <id> key=value ...                 change task fields
@@ -434,6 +435,21 @@ function readPr(p, task) {
 
 // -------------------------------------------------------------------------------------- commands
 
+// 20261021T141500: a folder name that sorts by time.
+function stamp(d = new Date()) {
+  return d.toISOString().replace(/[-:]/g, "").replace(/\..*$/, "");
+}
+
+// AgentNotes\.backup holds copies, never tracked.
+function excludeBackup(root) {
+  const exclude = path.join(root, ".git", "info", "exclude");
+  const text = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf8") : "";
+  if (!/^\/\.backup\/$/m.test(text)) {
+    fs.mkdirSync(path.dirname(exclude), { recursive: true });
+    fs.writeFileSync(exclude, `${text}${text && !text.endsWith("\n") ? "\n" : ""}/.backup/\n`);
+  }
+}
+
 function cmdInit(ctx, opts) {
   const repo = repoInfo(ctx);
   const root = ensureNotes(ctx, repo);
@@ -441,8 +457,18 @@ function cmdInit(ctx, opts) {
   return withLock(root, () => {
     const file = path.join(dir, "project.json");
     let config;
+    let message = `${repo.name}: init`;
     if (fs.existsSync(file)) {
       config = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (opts.move && !samePath(config.repo, repo.main) && !fs.existsSync(config.repo)) {
+        const backup = path.join(root, ".backup", stamp(), repo.name);
+        fs.cpSync(dir, backup, { recursive: true });
+        excludeBackup(root);
+        ctx.out(`moved project ${repo.name} from ${config.repo}; the old copy is in ${backup}\n`);
+        message = `${repo.name}: moved from ${config.repo} to ${repo.main}`;
+        config.repo = repo.main;
+        writeProject({ dir, config });
+      }
       checkOwner(config, repo, dir);
     } else {
       const mainBranch = opts.main || detectMain(ctx, repo.main);
@@ -452,7 +478,7 @@ function cmdInit(ctx, opts) {
       writeProject({ dir, config });
       writeStatus({ dir, repo, config });
     }
-    commitNotes(ctx, root, repo.name, `${repo.name}: init`);
+    commitNotes(ctx, root, repo.name, message);
     ctx.out(`project ${repo.name}: ${dir} (main branch ${config.mainBranch}, gate ${config.gate || "not set"})\n`);
   });
 }
@@ -714,7 +740,7 @@ function cmdMerge(ctx, raw, opts) {
 // ------------------------------------------------------------------------------------------ CLI
 
 const VALUE_FLAGS = new Set(["priority", "phase", "status", "main", "author", "no-gate"]);
-const BOOL_FLAGS = new Set(["worktree", "no-pull"]);
+const BOOL_FLAGS = new Set(["worktree", "no-pull", "move"]);
 const HELP = fs.readFileSync(__filename, "utf8").split("\n").filter((l) => l.startsWith("//   ")).map((l) => l.slice(5)).join("\n");
 
 function parseArgs(args) {
