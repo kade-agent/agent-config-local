@@ -124,3 +124,14 @@ test("the dispatcher skill runs the queue with agent-board and worktrees, in Pi"
     assert.ok(prompt.includes(needed), `worker-prompt.md: ${needed}`);
   }
 });
+
+// The developer installs Pi's extensions by hand (2026-10-21): install.cjs never downloads
+// anything. The README names each command, and ask-user-question is copied from the
+// developer's own clone of pi-config, which has no licence to copy it into this repository.
+test("the README says how to install the Pi extensions the skills use", () => {
+  const readme = read("README.md");
+  for (const needed of ["pi install npm:pi-sub-agent", "ask-user-question.ts", "~/.pi/agent/extensions/", "/reload"]) {
+    assert.ok(readme.includes(needed), `README.md: ${needed}`);
+  }
+  assert.ok(!fs.existsSync(path.join(ROOT, "extensions")), "no extension code is copied into this repository");
+});
