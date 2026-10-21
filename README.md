@@ -76,7 +76,7 @@ it as `node ~/.claude/tools/agent-board.cjs` from Git Bash):
 |---|---|
 | `AGENTS.md` | The rules; line 1 is the version (edit it by hand on a change) |
 | `CLAUDE.md` | `@AGENTS.md` |
-| `skills/` | `repo-workflow`, `session-resume`, `session-handoff`, `handoff-trigger` |
+| `skills/` | `repo-workflow`, `session-resume`, `session-handoff`, `handoff-trigger`, `dispatcher` (Pi only) |
 | `hooks/context-guard.cjs` | The context-size warning (Claude Code only), registered from `settings.global.json` |
 | `tools/agent-board.cjs` | The Project and Board in AgentNotes |
 | `setup/install.cjs` | The installer |
