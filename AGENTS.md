@@ -1,4 +1,4 @@
-Local rules: local-2026.10.21.1
+Local rules: local-2026.10.21.2
 
 # Global rules: local setup
 
