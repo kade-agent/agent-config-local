@@ -46,12 +46,22 @@ To update: `git -C %USERPROFILE%\agent-config-local pull`, then run `install.cjs
 The skills use two Pi extensions: subagents for `dispatcher`, and a question popup for asking
 you. `install.cjs` never downloads them: run these yourself, and only if the company allows it.
 
-1. Subagents ([pi-sub-agent](https://www.npmjs.com/package/pi-sub-agent), MIT, Pi 0.74 or
-   later). Its bundled `worker` sets no model, so workers run on your local model:
+1. Subagents, **experimental**:
+   [HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) (MIT).
+   Each subagent runs in its own [WezTerm](https://wezfurlong.org/wezterm/) pane and returns
+   at once. Its panes run `bash`, so WezTerm's shell must be Git Bash: in `%USERPROFILE%\.wezterm.lua`,
+   `config.default_prog = { 'C:\\Program Files\\Git\\bin\\bash.exe', '-l' }`. Remove
+   `pi-sub-agent` first if it is installed (both add a `subagent` tool), then install and
+   start Pi inside WezTerm:
 
    ```bat
-   pi install npm:pi-sub-agent
+   pi remove npm:pi-sub-agent
+   pi install git:github.com/HazAT/pi-interactive-subagents
+   setx PI_SUBAGENT_MUX wezterm
    ```
+
+   Its bundled agents run online models; `install.cjs` puts six local agents of the same
+   names in `~/.pi/agent/agents/` (from `pi-agents/`), which win over them and name no model.
 
 2. Questions to you (`ask_user_question`), from
    [pi-config](https://github.com/amosblomqvist/pi-config). That repository has no licence, so
@@ -100,9 +110,10 @@ it as `node ~/.claude/tools/agent-board.cjs` from Git Bash):
 |---|---|
 | `AGENTS.md` | The rules; line 1 is the version (edit it by hand on a change) |
 | `CLAUDE.md` | `@AGENTS.md` |
-| `skills/` | `repo-workflow`, `session-resume`, `session-handoff`, `handoff-trigger`, `dispatcher` (Pi only, with `pi install npm:pi-sub-agent`) |
+| `skills/` | `repo-workflow`, `session-resume`, `session-handoff`, `handoff-trigger`, `dispatcher` (Pi only; see Pi extensions) |
 | `hooks/context-guard.cjs` | The context-size warning (Claude Code only), registered from `settings.global.json` |
 | `tools/agent-board.cjs` | The Project and Board in AgentNotes |
+| `pi-agents/` | Pi's local subagents (experimental), installed to `~/.pi/agent/agents/` |
 | `setup/install.cjs` | The installer |
 | `tests/`, `*.test.cjs` | `node --test` |
 | `.claude/CLAUDE.md` | This repository's notes for a session working on it; never installed |
