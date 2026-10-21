@@ -1,6 +1,6 @@
 ---
 name: dispatcher
-description: Run the AgentNotes board as a dispatcher in Pi - pick the tasks that need nothing from the developer, get the developer's approval of their plans, start one Pi subagent per task (pi-sub-agent) in its own worktree made by agent-board, watch each until it reports DONE, and merge only after the developer says yes. Use in Pi when the developer asks to dispatch tasks, to run the board in parallel, or invokes /dispatcher. Not for Claude Code on a local model.
+description: Run the AgentNotes board as a dispatcher in Pi - pick the tasks that need nothing from the developer, get the developer's approval of their plans, start one Pi subagent per task (pi-sub-agent) in its own worktree made by agent-board, watch each until it reports DONE, and merge only after the developer says yes. Use in Pi when the developer asks to dispatch tasks, to run the board in parallel, or invokes /skill:dispatcher. Not for Claude Code on a local model.
 ---
 
 # Dispatcher (local setup, Pi)
@@ -86,8 +86,8 @@ When a task is DONE, dispatch whatever it unblocked. Never wait with `sleep` loo
    when one needs their decision.
 3. Design work with no options yet becomes an options-doc task: options A/B(/C) per question,
    one recommended, and its DONE lists the questions for the developer.
-4. Put decisions to the developer at most 4 questions at a time, recommended option first.
-   Read their answers literally; restate a free-text answer before acting on it.
+4. Put decisions to the developer with `ask_user_question`, one question per call, the
+   recommended option first. Read their answers literally; restate a free-text answer before acting on it.
 5. Record each decision in the task files it affects, with their words quoted. Then dispatch
    what it unblocks and tell any running worker whose task it changes.
 

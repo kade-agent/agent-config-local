@@ -30,6 +30,9 @@ expression the subject must match, such as a ticket key), `phases`.
   your recommendation; build after they pick.
 - **A decision brief** is: 2 to 3 options in a table, the upkeep cost of each, your
   recommendation, open questions. Set `waiting=developer` on the task while it waits.
+- **Asking the developer:** in Pi, the `ask_user_question` tool (the README's Pi extensions), one
+  question per call, the recommended option first with "(Recommended)"; without it, ask in
+  plain text and wait.
 - **Anything that leaves this PC** (a download, an install, a message): say what it is and why,
   then ask. Company code, names and errors never go into a web search or an online service.
 - "Follow your recommendation" means: do what you recommended.
