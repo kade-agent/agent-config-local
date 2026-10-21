@@ -26,7 +26,7 @@ HARD RULES
    on a failing gate, then BLOCKED.
 6. Generated files (<the repository's generated files and their regenerate commands>) are never
    resolved by hand: take the main branch's version, regenerate, rerun the gate, and commit them
-   on their own. When the dispatcher says to merge the main branch in, do it at your next step.
+   on their own. <If the main branch moved since this branch started: merge it in first.>
 7. Done: run the gate (<gate>), fill the PR doc (What changed and why, Verified, NOT VERIFIED,
    Wrong turns, Decisions taken (placeholders)), then `agent-board finish <id>`. Name every
    gate you could not run as `NOT VERIFIED: <gate>: <reason>`. Never run `agent-board merge`:
