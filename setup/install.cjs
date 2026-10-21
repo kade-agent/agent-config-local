@@ -227,12 +227,70 @@ function git(ctx, cwd, args) {
   return spawnSync("git", args, { cwd, env: ctx.env, encoding: "utf8" });
 }
 
-function setupRepo(ctx, repoArg, mainBranch) {
+function samePath(a, b) {
+  const norm = (p) => {
+    const full = fs.existsSync(p) ? fs.realpathSync(p) : path.resolve(p);
+    return process.platform === "win32" ? full.toLowerCase() : full;
+  };
+  return norm(a) === norm(b);
+}
+
+// A folder that is not a repository becomes one after a y: git init and one empty commit with
+// the developer's own identity, so the main branch exists; their files stay untracked.
+function initRepo(ctx, repo) {
+  if (!yes(ctx, `${repo} is not a git repository. git init here, with an empty first commit? [y/N] `)) {
+    ctx.err(`install: ${repo} is not a git repository; nothing was changed (run in a terminal and answer y to git init it)\n`);
+    return false;
+  }
+  if (git(ctx, repo, ["var", "GIT_AUTHOR_IDENT"]).status !== 0) {
+    ctx.err("install: git has no user.name and user.email for the first commit; set them and run again\n");
+    return false;
+  }
+  for (const args of [["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "Start the repository"]]) {
+    const r = git(ctx, repo, args);
+    if (r.status !== 0) {
+      ctx.err(`install: git ${args[0]} failed in ${repo}:\n${r.stderr}`);
+      return false;
+    }
+  }
+  ctx.out(`git init ${repo}, with one empty commit on main; your files are untracked\n`);
+  return true;
+}
+
+function setupRepo(ctx, repoArg, mainBranch, project) {
   const repo = path.resolve(repoArg);
-  const top = git(ctx, repo, ["rev-parse", "--show-toplevel"]);
-  if (!fs.existsSync(repo) || top.status !== 0) {
-    ctx.err(`install: ${repo} is not a git repository\n`);
+  if (!fs.existsSync(repo)) {
+    ctx.err(`install: ${repo} does not exist\n`);
     return 1;
+  }
+  if (git(ctx, repo, ["rev-parse", "--show-toplevel"]).status !== 0 && !initRepo(ctx, repo)) return 1;
+  // The project is the name given, never the folder's; a project whose repository was renamed
+  // or moved is re-pointed here after a y (agent-board init --move).
+  const common = path.resolve(repo, git(ctx, repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim());
+  const checkout = path.basename(common) === ".git" ? path.dirname(common) : common;
+  const notes = path.resolve(ctx.env.AGENT_NOTES_DIR || path.join(os.homedir(), "AgentNotes"));
+  const projectFile = path.join(notes, project, "project.json");
+  let move = false;
+  if (fs.existsSync(projectFile)) {
+    const recorded = JSON.parse(fs.readFileSync(projectFile, "utf8")).repo;
+    if (!samePath(recorded, checkout)) {
+      if (fs.existsSync(recorded)) {
+        ctx.err(`install: the project ${project} belongs to ${recorded}; give this repository another --project\n`);
+        return 1;
+      }
+      if (!yes(ctx, `The project ${project} belongs to ${recorded}, which no longer exists. Move it to ${checkout}? [y/N] `)) {
+        ctx.err(`install: nothing was changed: the project ${project} belongs to ${recorded}, which no longer exists; ` +
+          `run in a terminal and answer y to move it here\n`);
+        return 1;
+      }
+      move = true;
+    }
+  }
+  const nameFile = path.join(common, "agent-project");
+  const oldName = fs.existsSync(nameFile) ? fs.readFileSync(nameFile, "utf8").trim() : "";
+  if (oldName !== project) {
+    fs.writeFileSync(nameFile, `${project}\n`);
+    ctx.out(`wrote the project name ${project} to ${nameFile}${oldName ? ` (it was ${oldName})` : ""}\n`);
   }
   const attrPath = path.resolve(repo, git(ctx, repo, ["rev-parse", "--git-path", "info/attributes"]).stdout.trim());
   const old = fs.existsSync(attrPath) ? fs.readFileSync(attrPath, "utf8").replace(/\r\n/g, "\n") : "";
@@ -256,7 +314,8 @@ function setupRepo(ctx, repoArg, mainBranch) {
     );
   }
   const board = require(path.join(ROOT, "tools", "agent-board.cjs"));
-  return board.main(["init", ...(mainBranch ? ["--main", mainBranch] : [])], { cwd: repo, env: ctx.env, out: ctx.out, err: ctx.err });
+  const args = ["init", ...(mainBranch ? ["--main", mainBranch] : []), ...(move ? ["--move"] : [])];
+  return board.main(args, { cwd: repo, env: ctx.env, out: ctx.out, err: ctx.err });
 }
 
 // The clone is wherever this file is, whatever its folder is called. The installer it pulled may
@@ -276,12 +335,16 @@ function upgrade(ctx, argv) {
 function main(argv, ctx) {
   const i = argv.indexOf("--repo");
   if (i >= 0) {
-    if (!argv[i + 1]) {
-      ctx.err("install: --repo needs a path\n");
+    const next = argv[i + 1];
+    const repo = next && !next.startsWith("--") ? next : ctx.cwd || process.cwd();
+    const p = argv.indexOf("--project");
+    const project = p >= 0 ? argv[p + 1] || "" : "";
+    if (!PROJECT_NAME.test(project)) {
+      ctx.err("install: --repo needs --project <name> (letters, digits, . _ -); the folder's name is never used\n");
       return 1;
     }
     const m = argv.indexOf("--main");
-    return setupRepo(ctx, argv[i + 1], m >= 0 ? argv[m + 1] : "");
+    return setupRepo(ctx, repo, m >= 0 ? argv[m + 1] : "", project);
   }
   const unknown = argv.filter((a) => a !== "--dry-run" && a !== "--upgrade");
   if (unknown.length) {
