@@ -99,3 +99,27 @@ test("nothing points at the branch of agent-config this repository moved from", 
   }
   assert.match(read("README.md"), /git clone https:\/\/github\.com\/kade-agent\/agent-config-local /);
 });
+
+// The dispatcher flow, ported from the GitHub setup (2026-10-21) for Pi on a local model: the
+// rules let a dispatcher's workers run in parallel on a plan the developer approved, and the
+// skill runs the queue with agent-board, worktrees and the developer's yes before each merge.
+test("the rules allow the dispatcher flow and keep the developer's approval their own", () => {
+  const rules = RULES.replace(/\s+/g, " ");
+  for (const needed of ["`dispatcher` skill", "approval of its plan recorded in its task file",
+    "never the developer's approval", "red gate on the main branch is fixed or reverted"]) {
+    assert.ok(rules.includes(needed), `AGENTS.md: ${needed}`);
+  }
+});
+
+test("the dispatcher skill runs the queue with agent-board and worktrees, in Pi", () => {
+  assert.ok(SKILLS.includes("dispatcher"), "skills/dispatcher exists");
+  const skill = read("skills", "dispatcher", "SKILL.md");
+  for (const needed of ["Pi", "agent-board start <id> --worktree", "agent-board finish", "agent-board merge",
+    "git diff --name-only", "references/worker-prompt.md", "One replacement per task", "waiting=developer"]) {
+    assert.ok(skill.includes(needed), `SKILL.md: ${needed}`);
+  }
+  const prompt = read("skills", "dispatcher", "references", "worker-prompt.md");
+  for (const needed of ["DONE <id>", "BLOCKED <id>", "A placeholder is a value"]) {
+    assert.ok(prompt.includes(needed), `worker-prompt.md: ${needed}`);
+  }
+});
