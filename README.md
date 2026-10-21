@@ -41,6 +41,30 @@ own Claude Code rules can go in `%USERPROFILE%\.claude\rules\`. For a model with
 To update: `git -C %USERPROFILE%\agent-config-local pull`, then run `install.cjs` again.
 `install.cjs --dry-run` shows what it would change.
 
+## Pi extensions, once per PC
+
+The skills use two Pi extensions: subagents for `dispatcher`, and a question popup for asking
+you. `install.cjs` never downloads them: run these yourself, and only if the company allows it.
+
+1. Subagents ([pi-sub-agent](https://www.npmjs.com/package/pi-sub-agent), MIT, Pi 0.74 or
+   later). Its bundled `worker` sets no model, so workers run on your local model:
+
+   ```bat
+   pi install npm:pi-sub-agent
+   ```
+
+2. Questions to you (`ask_user_question`), from
+   [pi-config](https://github.com/amosblomqvist/pi-config). That repository has no licence, so
+   this one does not carry the file: clone it yourself and copy the one file.
+
+   ```bat
+   git clone https://github.com/amosblomqvist/pi-config %USERPROFILE%\pi-config
+   if not exist %USERPROFILE%\.pi\agent\extensions mkdir %USERPROFILE%\.pi\agent\extensions
+   copy %USERPROFILE%\pi-config\extensions\ask-user-question.ts %USERPROFILE%\.pi\agent\extensions\
+   ```
+
+Then restart Pi or run `/reload`. In Git Bash the folder is `~/.pi/agent/extensions/`.
+
 ## Setup, once per repository
 
 ```bat
@@ -76,7 +100,7 @@ it as `node ~/.claude/tools/agent-board.cjs` from Git Bash):
 |---|---|
 | `AGENTS.md` | The rules; line 1 is the version (edit it by hand on a change) |
 | `CLAUDE.md` | `@AGENTS.md` |
-| `skills/` | `repo-workflow`, `session-resume`, `session-handoff`, `handoff-trigger` |
+| `skills/` | `repo-workflow`, `session-resume`, `session-handoff`, `handoff-trigger`, `dispatcher` (Pi only, with `pi install npm:pi-sub-agent`) |
 | `hooks/context-guard.cjs` | The context-size warning (Claude Code only), registered from `settings.global.json` |
 | `tools/agent-board.cjs` | The Project and Board in AgentNotes |
 | `setup/install.cjs` | The installer |
