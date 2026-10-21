@@ -115,7 +115,8 @@ test("the dispatcher skill runs the queue with agent-board and worktrees, in Pi"
   assert.ok(SKILLS.includes("dispatcher"), "skills/dispatcher exists");
   const skill = read("skills", "dispatcher", "SKILL.md");
   for (const needed of ["Pi", "agent-board start <id> --worktree", "agent-board finish", "agent-board merge",
-    "git diff --name-only", "references/worker-prompt.md", "One replacement per task", "waiting=developer"]) {
+    "git diff --name-only", "references/worker-prompt.md", "One replacement per task", "waiting=developer",
+    "pi-sub-agent", "`subagent` tool", "\"agent\": \"worker\"", "\"cwd\"", "8 tasks"]) {
     assert.ok(skill.includes(needed), `SKILL.md: ${needed}`);
   }
   const prompt = read("skills", "dispatcher", "references", "worker-prompt.md");
