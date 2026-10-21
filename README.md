@@ -34,12 +34,16 @@ node %USERPROFILE%\agent-config-local\setup\install.cjs
 ```
 
 It writes into `%USERPROFILE%\.claude` (and `%USERPROFILE%\.pi\agent` if Pi is installed) only
-files it installed itself; any other file in the way stops it before it writes anything. Your
-own Claude Code rules can go in `%USERPROFILE%\.claude\rules\`. For a model with a 200K window:
+files it installed itself and you have not edited. Any other file in the way is listed, and it
+asks to move them to `%USERPROFILE%\.agent-config-backup\<time>\`: only `y` moves them and
+installs; any other answer, or no terminal, changes nothing. Every file a run replaces or
+removes is copied to the same folder first. Your own Claude Code rules can go in
+`%USERPROFILE%\.claude\rules\`. For a model with a 200K window:
 `setx CLAUDE_CONTEXT_WINDOW 200000` (the default is 1M).
 
-To update: `git -C %USERPROFILE%\agent-config-local pull`, then run `install.cjs` again.
-`install.cjs --dry-run` shows what it would change.
+To update: `node %USERPROFILE%\agent-config-local\setup\install.cjs --upgrade`. It runs
+`git pull --ff-only` in the clone it runs from (the folder may have any name), then the
+installer it pulled. `--dry-run` shows what it would change, and pulls, asks and writes nothing.
 
 ## Pi extensions, once per PC
 
@@ -68,13 +72,17 @@ Then restart Pi or run `/reload`. In Git Bash the folder is `~/.pi/agent/extensi
 ## Setup, once per repository
 
 ```bat
-node %USERPROFILE%\agent-config-local\setup\install.cjs --repo C:\work\shop
 cd C:\work\shop
+node %USERPROFILE%\agent-config-local\setup\install.cjs --repo --project shop
 node %USERPROFILE%\.claude\tools\agent-board.cjs config gate="gradlew.bat test"
 ```
 
-`--repo` writes the LF attributes into `.git\info\attributes` and creates the project in
-AgentNotes. It reports how many files the repository already stores with CRLF: a commit that
+`--repo [<path>]` (default: the current directory) needs `--project <name>`: the folder's name
+is never used, so renaming the folder keeps the project. It writes the LF attributes into
+`.git\info\attributes`, the name into `.git\agent-project`, and creates the project in
+AgentNotes. A folder that is not a repository gets, after a `y`, `git init` and one empty first
+commit with your own git identity; your files stay untracked. A project whose folder was
+renamed or moved is moved to the new folder after a `y` (a copy stays in `AgentNotes\.backup\`). It reports how many files the repository already stores with CRLF: a commit that
 touches one stores it with LF, so the whole file shows as changed. `--main <branch>` names the
 main branch when it is not `main`, `master` or `develop`. Other settings: `merge=squash`,
 `subjectPattern=<regular expression>` (for example a ticket key), `phases=Beta,Release`.
