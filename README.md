@@ -20,9 +20,8 @@ shared part (`hooks/context-guard.cjs`, the skills) is ported by hand.
 | claude.ai account skills | `~/.claude/skills/` and `~/.pi/agent/skills/` |
 
 AgentNotes (`%USERPROFILE%\AgentNotes`, or `AGENT_NOTES_DIR`) is a local git repository, one
-commit per change, never a remote. `<project>` is the folder name of the repository's main
-checkout; worktrees share it, and `.git\agent-project` names it when two repositories share a
-folder name.
+commit per change, never a remote. `<project>` is the name given to `install.cjs --repo --project`,
+kept in `.git\agent-project`; worktrees share it, and renaming the folder does not change it.
 
 ## Setup, once per PC
 

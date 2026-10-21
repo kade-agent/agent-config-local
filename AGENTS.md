@@ -33,7 +33,7 @@ every repository, kept by `agent-board` (`node ~/.claude/tools/agent-board.cjs`)
 
 - Every piece of work is a task: `agent-board new "<title>"`. Its files are in
   `AgentNotes\<project>\` (`%USERPROFILE%\AgentNotes`, or `AGENT_NOTES_DIR`); `<project>` is the
-  folder name of the repository's main checkout.
+  name given to `install.cjs --repo --project` (in `.git/agent-project`), never the folder's.
 - Change task fields only with `agent-board set`, never by hand; the text below the fields
   (goal, plan, findings) is yours to write. `STATUS.md` there is the board; never edit it.
 - A decision that is the developer's: `agent-board set <id> waiting=developer`, and ask.
