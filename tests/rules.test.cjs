@@ -116,7 +116,8 @@ test("the dispatcher skill runs the queue with agent-board and worktrees, in Pi"
   const skill = read("skills", "dispatcher", "SKILL.md");
   for (const needed of ["Pi", "agent-board start <id> --worktree", "agent-board finish", "agent-board merge",
     "git diff --name-only", "references/worker-prompt.md", "One replacement per task", "waiting=developer",
-    "pi-sub-agent", "`subagent` tool", "\"agent\": \"worker\"", "\"cwd\"", "8 tasks"]) {
+    "pi-interactive-subagents", "returns immediately", "subagent_resume", "caller_ping",
+    "subagent_interrupt", "agent: \"worker\"", "cwd:"]) {
     assert.ok(skill.includes(needed), `SKILL.md: ${needed}`);
   }
   const prompt = read("skills", "dispatcher", "references", "worker-prompt.md");
@@ -130,8 +131,27 @@ test("the dispatcher skill runs the queue with agent-board and worktrees, in Pi"
 // developer's own clone of pi-config, which has no licence to copy it into this repository.
 test("the README says how to install the Pi extensions the skills use", () => {
   const readme = read("README.md");
-  for (const needed of ["pi install npm:pi-sub-agent", "ask-user-question.ts", "~/.pi/agent/extensions/", "/reload"]) {
+  for (const needed of ["pi install git:github.com/HazAT/pi-interactive-subagents", "WezTerm", "default_prog",
+    "ask-user-question.ts", "~/.pi/agent/extensions/", "/reload"]) {
     assert.ok(readme.includes(needed), `README.md: ${needed}`);
   }
   assert.ok(!fs.existsSync(path.join(ROOT, "extensions")), "no extension code is copied into this repository");
+});
+
+// The bundled agents of pi-interactive-subagents run online models (Sonnet, Haiku, Opus) or the
+// Claude CLI; company code never leaves the PC, so ours name no model and no CLI, and none of
+// them has a web tool.
+test("the Pi agents name no model, no CLI and no web tool, and cover every bundled agent", () => {
+  const dir = path.join(ROOT, "pi-agents");
+  const names = fs.readdirSync(dir).sort();
+  assert.deepStrictEqual(names, ["claude-code.md", "planner.md", "reviewer.md", "scout.md", "visual-tester.md", "worker.md"]);
+  for (const name of names) {
+    const text = read("pi-agents", name);
+    const fm = /^---\n([\s\S]*?)\n---\n/.exec(text);
+    assert.ok(fm, `${name}: frontmatter`);
+    assert.strictEqual(/^name: (.+)$/m.exec(fm[1])?.[1], name.replace(/\.md$/, ""));
+    assert.doesNotMatch(fm[1], /^(model|cli):/m, `${name}: no model and no CLI`);
+    assert.doesNotMatch(text, /web_search|web_fetch/, `${name}: no web tool`);
+    assert.match(fm[1], /^spawning: false$/m, `${name}: never spawns`);
+  }
 });

@@ -85,6 +85,19 @@ test("Pi gets a full copy of the rules and the skills when ~/.pi/agent exists", 
   assert.ok(!fs.existsSync(path.join(pi, "settings.json")), "Pi's settings are not touched");
 });
 
+// Experimental (2026-10-21): pi-interactive-subagents' bundled agents name online models
+// (Sonnet, Haiku, Opus, the Claude CLI). Our own agents of the same names override them and
+// name no model, so every worker runs on the local model.
+test("Pi gets the local agents that override pi-interactive-subagents' bundled ones", () => {
+  const s = sandbox();
+  fs.mkdirSync(path.join(s.home, ".pi", "agent"), { recursive: true });
+  assert.strictEqual(s.run().code, 0);
+  for (const name of fs.readdirSync(path.join(ROOT, "pi-agents"))) {
+    assert.strictEqual(read(path.join(s.home, ".pi", "agent", "agents", name)), src("pi-agents", name));
+    assert.ok(!fs.existsSync(s.claude("agents", name)), "Claude Code does not get Pi's agents");
+  }
+});
+
 test("a second run changes nothing", () => {
   const s = sandbox();
   fs.mkdirSync(path.join(s.home, ".pi", "agent"), { recursive: true });
