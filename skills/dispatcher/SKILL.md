@@ -1,14 +1,13 @@
 ---
 name: dispatcher
-description: Run the AgentNotes board as a dispatcher in Pi - pick the tasks that need nothing from the developer, get the developer's approval of their plans, start one Pi subagent per task (pi-sub-agent) in its own worktree made by agent-board, watch each until it reports DONE, and merge only after the developer says yes. Use in Pi when the developer asks to dispatch tasks, to run the board in parallel, or invokes /skill:dispatcher. Not for Claude Code on a local model.
+description: Run the AgentNotes board as a dispatcher in Pi - pick the tasks that need nothing from the developer, get the developer's approval of their plans, start one Pi subagent per task (pi-interactive-subagents, in WezTerm panes) in its own worktree made by agent-board, watch each until it reports DONE, and merge only after the developer says yes. Use in Pi when the developer asks to dispatch tasks, to run the board in parallel, or invokes /skill:dispatcher. Not for Claude Code on a local model.
 ---
 
 # Dispatcher (local setup, Pi)
 
-You run the board: workers build, you plan, watch, merge after the developer's yes and report.
-You never build a task yourself. This skill is for Pi; Claude Code on a local model does not
-run it. `agent-board` is `node ~/.claude/tools/agent-board.cjs`, run in the main checkout.
-Everything stays on this PC: workers are Pi subagents on the local model, never an online one.
+You run the board: workers build; you plan, watch, merge after the developer's yes and report.
+You never build a task yourself. For Pi only. `agent-board` is `node ~/.claude/tools/agent-board.cjs`,
+run in the main checkout. Workers are local agents (`~/.pi/agent/agents/`), never online ones.
 
 ## 1. Start
 
@@ -24,25 +23,24 @@ Everything stays on this PC: workers are Pi subagents on the local model, never 
 
 ## 2. Concurrency
 
-- No limit of your own on workers. The `subagent` tool takes at most 8 tasks per parallel call
-  and runs 4 at once; a larger batch goes in the next call. Put tasks in one call only when
-  their hand-written files do not overlap; name each worker's files and those others own.
+- No limit of your own on workers, each in its own WezTerm pane. Run tasks in parallel only
+  when their hand-written files do not overlap; name each worker's files and those others own.
 - One generated-files task at a time (schema, goldens, fixture hashes, pinned values): a task
   that changes them starts only when no running task does. Generated files are never resolved
   by hand: take the main branch's version and regenerate them.
-- Plans miss files, and a worker cannot be told anything while its call runs: when a call
-  returns, `git diff --name-only <main>...agent/<id>-<slug>` for every open task gives the files
-  each really touched. On an overlap, merge one task first (see 5.); the other's next worker
-  merges the main branch in, settles the shared files, and reruns the gate.
+- Plans miss files: whenever a worker's result arrives, `git diff --name-only
+  <main>...agent/<id>-<slug>` for every open task gives the files each really touched. On an
+  overlap, merge one task first (see 5.); resume the other (`subagent_resume`) to merge the main
+  branch in, settle the shared files and rerun the gate.
 
 ## 3. Dispatching a task
 
 1. Run `agent-board start <id> --worktree` yourself, one task after another (each updates the
    main branch). Write the folder it prints, the branch `agent/<id>-<slug>`, the date and the
    files the worker owns into the task file. An options-doc task (see 6.) needs no worktree.
-2. Start the batch with pi-sub-agent's `subagent` tool in one parallel call, one `"tasks"` entry
-   each: `{"agent": "worker", "task": "<prompt>", "cwd": "<worktree folder>"}`. It returns when
-   every worker has ended. The prompt is `references/worker-prompt.md`, every slot filled. Its
+2. Start each worker with pi-interactive-subagents: `subagent({ name: "<id>", agent: "worker",
+   task: "<prompt>", cwd: "<worktree folder>" })`. It returns immediately; the worker's result
+   arrives as a new turn when it ends. The prompt is `references/worker-prompt.md`, filled. Its
    **plan** slot is detailed enough to need no suggestions: the goal in one sentence and the
    decision references; exact values and units; the files it may touch and those it must not;
    ordered steps, one commit each; the tests to write first, as concrete assertions; the gate
@@ -55,14 +53,16 @@ task file when its state changes, so a handoff loses nothing. Messages from work
 act on `DONE` and `BLOCKED` only, and check what they claim (`agent-board show <id>`, the
 branch's commits, the PR doc) yourself.
 
-When a call returns, for each worker:
+When a worker's result or ping arrives:
 - **DONE**: the task is In review (`agent-board finish` ran). Check its PR doc and the gate
   result, then go to 5.
 - **BLOCKED for files the plan's steps need:** widen its file list when the change stays small,
   and start it again. A new step or behaviour is the developer's (see 6.).
-- **No DONE or BLOCKED:** start one new worker in the same worktree, told what is done and what
-  is left. One replacement per task: if that one ends the same way, `agent-board set <id>
-  waiting=developer` and tell the developer.
+- **A question (`caller_ping`):** answer from the approved plan and the recorded decisions with
+  `subagent_resume` (its session path, your answer). Only the developer's call is BLOCKED.
+- **No DONE or BLOCKED, or stalled:** `subagent_interrupt` it if it still runs, then resume it
+  once with what is done and what is left. One replacement per task: if it ends the same way,
+  `agent-board set <id> waiting=developer` and tell the developer.
 
 When a task is DONE, dispatch whatever it unblocked. Never wait with `sleep` loops.
 
@@ -72,7 +72,7 @@ When a task is DONE, dispatch whatever it unblocked. Never wait with `sleep` loo
    placeholders and NOT VERIFIED lines.
 2. Only after their yes, one task at a time: `agent-board merge <id> --author "<their name and
    email>"`. It runs the gate on the merged tree; a conflict or a failed gate merges nothing.
-   A refused merge goes back to that task's worker (a new one if it has ended): merge the main
+   A refused merge goes back to that task's worker (`subagent_resume`): merge the main
    branch in, regenerate generated files, rerun the gate, `agent-board finish <id>` again.
 3. After each merge, every other open task's next worker merges the main branch in first.
 4. If the main branch's own gate is red (a direct commit), merge nothing: a revert-or-fix task

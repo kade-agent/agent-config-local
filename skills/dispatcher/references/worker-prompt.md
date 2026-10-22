@@ -11,8 +11,9 @@ HARD RULES
    <date>). Never ask them and never wait for them. A placeholder is a value (a number, a
    string, a default), never a new dependency, module, service, schema or stub for an undecided
    design: those are `BLOCKED <id>: <what is undecided>`. List each placeholder in the PR doc
-   under "Decisions taken (placeholders)". A new step or behaviour the plan does not hold, or a
-   technical impossibility, is `BLOCKED <id>: <why>`.
+   under "Decisions taken (placeholders)". A question the plan does not answer goes to the
+   dispatcher, one precise question with `caller_ping`; it resumes you with the answer. A new
+   step or behaviour the plan does not hold, or a technical impossibility, is `BLOCKED <id>: <why>`.
 2. Touch only these files: <files>. Do not touch: <files other workers own, or held files>.
    If a step needs another file, change it as little as possible and say so in the PR doc.
 3. Read first: the global rules (~/.pi/agent/AGENTS.md), the repository's AGENTS.md or

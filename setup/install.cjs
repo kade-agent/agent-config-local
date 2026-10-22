@@ -55,6 +55,7 @@ function filesUnder(dir, prefix) {
 function targets(home) {
   const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
   const skills = filesUnder(path.join(ROOT, "skills"), "skills");
+  const piAgents = filesUnder(path.join(ROOT, "pi-agents"), "agents");
   return [
     {
       name: "Claude Code",
@@ -73,7 +74,7 @@ function targets(home) {
       name: "Pi",
       dir: path.join(home, ".pi", "agent"),
       always: false,
-      files: { "AGENTS.md": read("AGENTS.md"), ...skills },
+      files: { "AGENTS.md": read("AGENTS.md"), ...skills, ...piAgents },
     },
   ];
 }
